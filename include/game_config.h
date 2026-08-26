@@ -82,7 +82,8 @@ extern "C" {
 /* Timing & Idle Attract Mode Parameters */
 #define TARGET_FPS           60
 #define FRAME_TIME_US        (1000000 / TARGET_FPS)
-#define ATTRACT_IDLE_TIMEOUT_MS 10000  /* 10 seconds of inactivity -> Auto-pilot */
+#define ATTRACT_IDLE_TIMEOUT_MS 6000   /* 6 seconds of inactivity -> Auto-pilot */
+
 
 #ifdef __cplusplus
 }

@@ -67,19 +67,15 @@ void input_ctrl_poll(const vision_track_result_t *vision_res, input_state_t *sta
     state->btn_up_pressed = btn_up;
     state->btn_down_pressed = btn_down;
 
-    /* Detect camera optical motion */
-    bool camera_human_action = vision_has_human_gesture(vision_res);
-
-    /* Determine if human interaction happened this tick */
-    bool human_active = (btn_up || btn_down || camera_human_action);
-
-    if (human_active) {
+    /* ONLY physical button presses cancel attract mode & reset idle timer */
+    if (btn_up || btn_down) {
         last_human_activity_ms = now;
         attract_mode_active = false;
     }
 
     uint32_t idle_time = now - last_human_activity_ms;
     state->idle_duration_ms = idle_time;
+
 
     /* Attract mode activation check */
     if (idle_time >= ATTRACT_IDLE_TIMEOUT_MS) {

@@ -4,90 +4,126 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-/* bflb_mcu_sdk camera, i2c and timer drivers */
+/* bflb_mcu_sdk drivers & board initialization */
+#include "board.h"
+#include "bflb_csi.h"
 #include "bflb_cam.h"
 #include "bflb_i2c.h"
-#include "bflb_gpio.h"
+#include "image_sensor.h"
 #include "bflb_mtimer.h"
 
-/* GC0328 I2C Address (7-bit 0x21, 8-bit write 0x42) */
-#define GC0328_I2C_ADDR      0x21
-
-/* Camera DVP peripheral handle */
-static struct bflb_device_s *cam_dev = NULL;
 static struct bflb_device_s *i2c_dev = NULL;
+static struct bflb_device_s *cam_dev = NULL;
+static struct bflb_device_s *csi_dev = NULL;
+static bool cam_initialized = false;
+static uint16_t img_res_x = 0;
+static uint16_t img_res_y = 0;
 
-/* Frame buffer slice for DVP DMA reception */
-/* YUV422 format: 2 bytes per pixel (Y0, U0, Y1, V0) */
-#define SLICE_BUFFER_SIZE (CAM_FRAME_WIDTH * CAM_SLICE_HEIGHT * 2)
-ATTR_WIFI_RAM_SECTION static uint8_t __attribute__((aligned(32))) cam_slice_buf[SLICE_BUFFER_SIZE];
-
+/* Frame buffer for camera reception */
+#define CAM_BUF_SIZE (320 * 240 * 2)
+ATTR_WIFI_RAM_SECTION static uint8_t __attribute__((aligned(32))) cam_frame_buf[CAM_BUF_SIZE];
 
 /* Filter state */
 static float smoothed_paddle_y = (SCREEN_HEIGHT - PADDLE_HEIGHT) / 2.0f;
-static float prev_raw_y = 0.0f;
 static uint32_t last_motion_tick = 0;
 
-/* Internal helper: I2C write byte to sensor register */
-static void sensor_write_reg(uint8_t reg, uint8_t val)
-{
-    if (!i2c_dev) return;
-    struct bflb_i2c_msg_s msgs[1];
-    uint8_t buf[2] = { reg, val };
-
-    msgs[0].addr = GC0328_I2C_ADDR;
-    msgs[0].flags = 0;
-    msgs[0].buffer = buf;
-    msgs[0].length = 2;
-
-    bflb_i2c_transfer(i2c_dev, msgs, 1);
-}
-
-/* Minimal sensor init table for GC0328 (YUV422 QQVGA 160x120 output) */
-static const uint8_t gc0328_init_regs[][2] = {
-    {0xfe, 0x80}, /* Software reset */
-    {0xfe, 0x00}, /* Page 0 */
-    {0x14, 0x10}, /* Clock divider */
-    {0x24, 0xa2}, /* Output format: YUV422 */
-    {0x25, 0x0f}, /* YUYV sequence */
-    {0x1a, 0x2a}, /* Analog enable */
-    {0x1c, 0x4f},
-    {0x1d, 0x13},
-    {0xfe, 0x01}, /* Page 1 */
-    {0x0a, 0x00}, /* Auto exposure enable */
-    {0x40, 0x22}, /* Auto white balance */
-    {0xfe, 0x00}, /* Page 0 */
-    {0x09, 0x00}, /* Row start */
-    {0x0a, 0x00},
-    {0x0b, 0x00}, /* Column start */
-    {0x0c, 0x00},
-    {0x0d, 0x00}, /* Window height (120 lines QQVGA) */
-    {0x0e, 0x78},
-    {0x0f, 0x00}, /* Window width (160 cols QQVGA) */
-    {0x10, 0xa0},
-};
-
-/* Initialize Camera subsystem (Safe non-conflicting mode) */
+/* Initialize MIPI CSI Camera subsystem */
 void camera_dvp_init(void)
 {
-    /* On Sipeed M1s Dock, camera uses MIPI CSI interface while LCD uses SPI1.
-     * To prevent GPIO multiplexer contention with LCD pins (GPIO 24/25),
-     * camera hardware DVP is disabled in standalone LCD mode. */
-    cam_dev = NULL;
-    i2c_dev = NULL;
+    printf("[CAM] Initializing MIPI CSI Camera interface...\r\n");
+
+    board_csi_gpio_init();
+
+    i2c_dev = bflb_device_get_by_name("i2c0");
+    cam_dev = bflb_device_get_by_name("cam0");
+    csi_dev = bflb_device_get_by_name("csi");
+
+    if (!i2c_dev || !cam_dev || !csi_dev) {
+        printf("[CAM ERROR] Missing CSI/CAM/I2C device handles.\r\n");
+        return;
+    }
+
+    struct bflb_csi_config_s csi_cfg = {
+        .lane_number = CSI_LANE_NUMBER_2,
+        .tx_clk_escape = 24000000,
+        .data_rate = 520000000,
+    };
+    bflb_csi_init(csi_dev, &csi_cfg);
+    bflb_csi_start(csi_dev);
+
+    struct image_sensor_config_s *sensor_cfg = NULL;
+    if (image_sensor_scan(i2c_dev, &sensor_cfg)) {
+        printf("[CAM] Found sensor: %s (%dx%d)\r\n", sensor_cfg->name, sensor_cfg->resolution_x, sensor_cfg->resolution_y);
+        img_res_x = sensor_cfg->resolution_x;
+        img_res_y = sensor_cfg->resolution_y;
+
+        bflb_csi_set_line_threshold(csi_dev, sensor_cfg->resolution_x, sensor_cfg->pixel_clock, 80000000);
+
+        static struct bflb_cam_config_s cam_cfg;
+        memcpy(&cam_cfg, sensor_cfg, IMAGE_SENSOR_INFO_COPY_SIZE);
+        cam_cfg.with_mjpeg = false;
+        cam_cfg.input_source = CAM_INPUT_SOURCE_CSI;
+        cam_cfg.output_format = CAM_OUTPUT_FORMAT_AUTO;
+        cam_cfg.output_bufaddr = (uint32_t)(uintptr_t)cam_frame_buf;
+        cam_cfg.output_bufsize = sizeof(cam_frame_buf);
+
+        bflb_cam_init(cam_dev, &cam_cfg);
+        bflb_cam_start(cam_dev);
+        cam_initialized = true;
+        printf("[CAM] Camera streaming active.\r\n");
+    } else {
+        printf("[CAM] No sensor detected on I2C (camera not connected or sleep mode).\r\n");
+        cam_initialized = false;
+    }
 }
 
-/* Capture camera frame slice and calculate intensity centroid */
+/* Capture camera frame and calculate intensity centroid */
 void vision_process_frame(vision_track_result_t *result)
 {
     if (!result) return;
-
     memset(result, 0, sizeof(vision_track_result_t));
-    result->is_detected = false;
-    result->motion_active = false;
     result->mapped_paddle_y = smoothed_paddle_y;
-}
 
+    if (!cam_initialized || !cam_dev) return;
+
+    if (bflb_cam_get_frame_count(cam_dev) > 0) {
+        uint8_t *pic = NULL;
+        uint32_t pic_len = bflb_cam_get_frame_info(cam_dev, &pic);
+        bflb_cam_pop_one_frame(cam_dev);
+
+        if (!pic || pic_len == 0 || img_res_x == 0 || img_res_y == 0) return;
+
+        /* Optical centroid calculation on luminance (Y components) */
+        uint32_t total_weight = 0;
+        uint32_t weighted_y = 0;
+        int step_y = 4;
+        int step_x = 8;
+
+        for (int y = 0; y < img_res_y; y += step_y) {
+            uint32_t row_offset = (uint32_t)y * img_res_x * 2;
+            for (int x = 0; x < img_res_x; x += step_x) {
+                uint8_t luma = pic[row_offset + x * 2];
+                if (luma > CAM_LUMA_THRESHOLD) {
+                    uint32_t w = luma - CAM_LUMA_THRESHOLD;
+                    weighted_y += y * w;
+                    total_weight += w;
+                }
+            }
+        }
+
+        if (total_weight > CAM_MIN_PIXEL_MASS) {
+            float raw_centroid_y = (float)weighted_y / (float)total_weight;
+            float target_paddle_y = (raw_centroid_y / (float)img_res_y) * (SCREEN_HEIGHT - PADDLE_HEIGHT);
+
+            smoothed_paddle_y = smoothed_paddle_y * 0.75f + target_paddle_y * 0.25f;
+
+            result->is_detected = true;
+            result->mapped_paddle_y = smoothed_paddle_y;
+            result->motion_active = true;
+            last_motion_tick = bflb_mtimer_get_time_ms();
+        }
+    }
+}
 
 /* Check if intentional gesture was detected recently */
 bool vision_has_human_gesture(const vision_track_result_t *result)
@@ -97,8 +133,9 @@ bool vision_has_human_gesture(const vision_track_result_t *result)
     return (result->is_detected && ((now - last_motion_tick) < 400));
 }
 
-/* Access frame slice buffer */
+/* Access frame buffer */
 const uint8_t* vision_get_slice_buffer(void)
 {
-    return cam_slice_buf;
+    return cam_frame_buf;
 }
+
