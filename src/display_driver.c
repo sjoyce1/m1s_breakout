@@ -115,6 +115,10 @@ static inline void lcd_write_data8(uint8_t data)
 /* Set Drawing Window / Viewport */
 static void lcd_set_window(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2)
 {
+    /* Apply physical hardware panel Y offset (+20) for 280x240 LCD */
+    y1 += 20;
+    y2 += 20;
+
     /* Column Address Set */
     lcd_write_cmd(ST7789_CASET);
     lcd_write_data8((x1 >> 8) & 0xFF);
@@ -137,7 +141,7 @@ static void lcd_set_window(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2)
 void lcd_spi_init(void)
 {
     gpio_dev = bflb_device_get_by_name("gpio");
-    spi_dev  = bflb_device_get_by_name("spi0");
+    spi_dev  = bflb_device_get_by_name("spi1");
 
     /* Initialize control GPIO pins */
     bflb_gpio_init(gpio_dev, LCD_SPI_CS_PIN, GPIO_OUTPUT | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_1);
@@ -145,18 +149,22 @@ void lcd_spi_init(void)
     bflb_gpio_init(gpio_dev, LCD_SPI_RESET_PIN, GPIO_OUTPUT | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_1);
     bflb_gpio_init(gpio_dev, LCD_SPI_BACKLIGHT_PIN, GPIO_OUTPUT | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_1);
 
+    /* Configure SPI1 MOSI and SCLK Alternate Function Pinmux */
+    bflb_gpio_init(gpio_dev, LCD_SPI_MOSI_PIN, GPIO_FUNC_SPI1 | GPIO_ALTERNATE | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_2);
+    bflb_gpio_init(gpio_dev, LCD_SPI_SCLK_PIN, GPIO_FUNC_SPI1 | GPIO_ALTERNATE | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_2);
+
     bflb_gpio_set(gpio_dev, LCD_SPI_CS_PIN);
     bflb_gpio_set(gpio_dev, LCD_SPI_DC_PIN);
     bflb_gpio_set(gpio_dev, LCD_SPI_BACKLIGHT_PIN);
 
-    /* Initialize SPI0 Peripheral at 40MHz for high FPS */
+    /* Initialize SPI1 Peripheral at 40MHz for fast FPS */
     struct bflb_spi_config_s spi_cfg = {
         .freq = 40 * 1000 * 1000,
         .role = SPI_ROLE_MASTER,
         .mode = SPI_MODE0,
         .data_width = SPI_DATA_WIDTH_8BIT,
-        .bit_order = SPI_BIT_ORDER_MSB_FIRST,
-        .byte_order = SPI_BYTE_ORDER_MSB_FIRST,
+        .bit_order = SPI_BIT_MSB,
+        .byte_order = SPI_BYTE_MSB,
         .tx_fifo_threshold = 0,
         .rx_fifo_threshold = 0,
     };
@@ -182,7 +190,7 @@ void lcd_spi_init(void)
 
     /* Memory Access Control: 280x240 orientation (Landscape) */
     lcd_write_cmd(ST7789_MADCTL);
-    lcd_write_data8(0x70); /* MY=0, MX=1, MV=1, ML=1, BGR=0 */
+    lcd_write_data8(0x60); /* MY=0, MX=1, MV=1, ML=0, BGR=0 */
 
     /* Inversion ON for IPS panel */
     lcd_write_cmd(ST7789_INVON);
@@ -195,6 +203,7 @@ void lcd_spi_init(void)
     /* Clear initial display */
     lcd_clear(COLOR_BLACK);
 }
+
 
 /* Clear full screen with color */
 void lcd_clear(uint16_t color)

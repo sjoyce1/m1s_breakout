@@ -36,13 +36,14 @@ extern "C" {
 #define GPIO_BTN_UP          22   /* Onboard Button / Navigation Up   */
 #define GPIO_BTN_DOWN        23   /* Onboard Button / Navigation Down */
 
-/* LCD SPI Pins (Default M1s Dock Hardware SPI0 / SPI1) */
-#define LCD_SPI_MOSI_PIN     3
-#define LCD_SPI_SCLK_PIN     2
-#define LCD_SPI_CS_PIN       12
-#define LCD_SPI_DC_PIN       13
-#define LCD_SPI_RESET_PIN    11
-#define LCD_SPI_BACKLIGHT_PIN 14
+/* LCD SPI Pins (Sipeed M1s Dock Hardware SPI1) */
+#define LCD_SPI_MOSI_PIN     25   /* GLB_GPIO_PIN_25 (SPI1 MOSI) */
+#define LCD_SPI_SCLK_PIN     19   /* GLB_GPIO_PIN_19 (SPI1 SCLK) */
+#define LCD_SPI_CS_PIN       12   /* GLB_GPIO_PIN_12 (CS)        */
+#define LCD_SPI_DC_PIN       13   /* GLB_GPIO_PIN_13 (DC)        */
+#define LCD_SPI_RESET_PIN    24   /* GLB_GPIO_PIN_24 (RST)       */
+#define LCD_SPI_BACKLIGHT_PIN 11  /* GLB_GPIO_PIN_11 (BL/PWM)    */
+
 
 /* DVP Camera Sensor Configuration (GC0328 / GC0308) */
 #define CAM_FRAME_WIDTH      160

@@ -24,3 +24,11 @@ build_out/
 # Temporary / Log files
 *.log
 scratch/
+config.ini
+
+# External Submodules / Cloned SDKs and Toolchains
+bouffalo_sdk/
+M1s_BL808_SDK/
+M1s_BL808_example/
+toolchain_gcc_t-head_windows/
+

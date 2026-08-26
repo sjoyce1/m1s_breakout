@@ -20,7 +20,8 @@ static struct bflb_device_s *i2c_dev = NULL;
 /* Frame buffer slice for DVP DMA reception */
 /* YUV422 format: 2 bytes per pixel (Y0, U0, Y1, V0) */
 #define SLICE_BUFFER_SIZE (CAM_FRAME_WIDTH * CAM_SLICE_HEIGHT * 2)
-static uint8_t __attribute__((aligned(32))) cam_slice_buf[SLICE_BUFFER_SIZE];
+ATTR_WIFI_RAM_SECTION static uint8_t __attribute__((aligned(32))) cam_slice_buf[SLICE_BUFFER_SIZE];
+
 
 /* Filter state */
 static float smoothed_paddle_y = (SCREEN_HEIGHT - PADDLE_HEIGHT) / 2.0f;
@@ -85,20 +86,21 @@ void camera_dvp_init(void)
 
     if (cam_dev) {
         struct bflb_cam_config_s cam_cfg = {
-            .software_mode = CAM_AUTO_MODE,
-            .frame_mode = CAM_FRAME_INTERLEAVE,
-            .yuv_format = CAM_YUV_FORMAT_YUV422_YUYV,
-            .with_header = 0,
-            .input_source = CAM_INPUT_DVP_NORMAL,
-            .input_dvp_data_format = CAM_DATA_FORMAT_YUV422_8BIT,
+            .input_format = CAM_INPUT_FORMAT_YUV422_YUYV,
             .resolution_x = CAM_FRAME_WIDTH,
             .resolution_y = CAM_SLICE_HEIGHT,
             .h_blank = 0,
-            .v_blank = 0,
+            .pixel_clock = 24 * 1000 * 1000,
+            .with_mjpeg = false,
+            .input_source = CAM_INPUT_SOURCE_DVP,
+            .output_format = CAM_OUTPUT_FORMAT_AUTO,
+            .output_bufaddr = (uint32_t)(uintptr_t)cam_slice_buf,
+            .output_bufsize = sizeof(cam_slice_buf),
         };
 
         bflb_cam_init(cam_dev, &cam_cfg);
-        bflb_cam_crop(cam_dev, 0, CAM_FRAME_WIDTH, CAM_SLICE_Y_START, CAM_SLICE_HEIGHT);
+        bflb_cam_crop_vsync(cam_dev, CAM_SLICE_Y_START, CAM_SLICE_Y_START + CAM_SLICE_HEIGHT);
+        bflb_cam_crop_hsync(cam_dev, 0, CAM_FRAME_WIDTH);
         bflb_cam_start(cam_dev);
     }
 }
@@ -113,13 +115,16 @@ void vision_process_frame(vision_track_result_t *result)
     /* In DVP DMA capture mode, fetch new buffer */
     if (cam_dev) {
         uint8_t *frame_ptr = NULL;
-        uint32_t frame_len = 0;
-        if (bflb_cam_get_frame_info(cam_dev, &frame_ptr, &frame_len) == 0 && frame_ptr) {
+        uint32_t frame_len = bflb_cam_get_frame_info(cam_dev, &frame_ptr);
+        if (frame_len > 0 && frame_ptr) {
             uint32_t copy_len = (frame_len > SLICE_BUFFER_SIZE) ? SLICE_BUFFER_SIZE : frame_len;
-            memcpy(cam_slice_buf, frame_ptr, copy_len);
+            if (frame_ptr != cam_slice_buf) {
+                memcpy(cam_slice_buf, frame_ptr, copy_len);
+            }
             bflb_cam_pop_one_frame(cam_dev);
         }
     }
+
 
     uint64_t sum_x_weight = 0;
     uint64_t sum_y_weight = 0;
