@@ -11,13 +11,14 @@ if "%PORT%"=="" (
 set "BAUD=%2"
 if "%BAUD%"=="" set "BAUD=2000000"
 
-set "CPU_ID=m0"
-set "FIRMWARE=build\build_out\m1s_breakout_bl808_m0.bin"
+set "CPU_ID=d0"
+set "FIRMWARE=build\build_out\m1s_breakout_bl808_d0.bin"
 if not exist "%FIRMWARE%" (
-    set "CPU_ID=d0"
-    set "FIRMWARE=build\build_out\m1s_breakout_bl808_d0.bin"
+    set "CPU_ID=m0"
+    set "FIRMWARE=build\build_out\m1s_breakout_bl808_m0.bin"
 )
 if not exist "%FIRMWARE%" set "FIRMWARE=build\build_out\m1s_breakout_bl808.bin"
+
 
 if not exist "%FIRMWARE%" (
     echo [ERROR] Firmware binary not found!

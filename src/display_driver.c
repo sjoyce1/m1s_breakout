@@ -7,7 +7,11 @@
 #include "bflb_spi.h"
 #include "bflb_dma.h"
 #include "bflb_mtimer.h"
+#include "bflb_pwm_v2.h"
+#include "bflb_clock.h"
 #include "bl808_glb.h"
+
+
 
 
 /* LCD Controller Registers (ST7789V / NV3041A) */
@@ -163,7 +167,23 @@ void lcd_spi_init(void)
     /* Initialize control GPIO pins */
     bflb_gpio_init(gpio_dev, LCD_SPI_DC_PIN, GPIO_OUTPUT | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_1);
     bflb_gpio_init(gpio_dev, LCD_SPI_RESET_PIN, GPIO_OUTPUT | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_1);
-    bflb_gpio_init(gpio_dev, LCD_SPI_BACKLIGHT_PIN, GPIO_OUTPUT | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_1);
+
+    /* Configure Backlight PWM on GPIO 11 (2 kHz, 50% duty) */
+    bflb_gpio_init(gpio_dev, LCD_SPI_BACKLIGHT_PIN, GPIO_FUNC_PWM0 | GPIO_ALTERNATE | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_2);
+    struct bflb_device_s *pwm_dev = bflb_device_get_by_name("pwm_v2_0");
+    if (pwm_dev) {
+        struct bflb_pwm_v2_config_s pwm_cfg = {
+            .clk_source = BFLB_SYSTEM_XCLK,
+            .clk_div = 40,
+            .period = 500, /* 40MHz / 40 / 500 = 2 kHz */
+        };
+        bflb_pwm_v2_init(pwm_dev, &pwm_cfg);
+        bflb_pwm_v2_channel_set_threshold(pwm_dev, PWM_CH1, 0, 250); /* 50% duty cycle */
+        bflb_pwm_v2_channel_positive_start(pwm_dev, PWM_CH1);
+        bflb_pwm_v2_start(pwm_dev);
+        printf("[LCD] Hardware Backlight PWM initialized on GPIO 11.\r\n");
+    }
+
 
     /* Configure SPI1 CS, MOSI, and SCLK Alternate Function Pinmux */
     bflb_gpio_init(gpio_dev, LCD_SPI_CS_PIN, GPIO_FUNC_SPI1 | GPIO_ALTERNATE | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_2);
