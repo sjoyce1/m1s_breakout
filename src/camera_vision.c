@@ -67,42 +67,14 @@ static const uint8_t gc0328_init_regs[][2] = {
     {0x10, 0xa0},
 };
 
-/* Initialize DVP Camera, I2C sensor link, and DMA capture */
+/* Initialize Camera subsystem (Safe non-conflicting mode) */
 void camera_dvp_init(void)
 {
-    i2c_dev = bflb_device_get_by_name("i2c0");
-    cam_dev = bflb_device_get_by_name("cam0");
-
-    if (i2c_dev) {
-        bflb_i2c_init(i2c_dev, 400000); /* 400 kHz Fast-mode I2C */
-
-        /* Upload sensor registers */
-        bflb_mtimer_delay_ms(10);
-        for (size_t i = 0; i < sizeof(gc0328_init_regs) / sizeof(gc0328_init_regs[0]); i++) {
-            sensor_write_reg(gc0328_init_regs[i][0], gc0328_init_regs[i][1]);
-            bflb_mtimer_delay_ms(1);
-        }
-    }
-
-    if (cam_dev) {
-        struct bflb_cam_config_s cam_cfg = {
-            .input_format = CAM_INPUT_FORMAT_YUV422_YUYV,
-            .resolution_x = CAM_FRAME_WIDTH,
-            .resolution_y = CAM_SLICE_HEIGHT,
-            .h_blank = 0,
-            .pixel_clock = 24 * 1000 * 1000,
-            .with_mjpeg = false,
-            .input_source = CAM_INPUT_SOURCE_DVP,
-            .output_format = CAM_OUTPUT_FORMAT_AUTO,
-            .output_bufaddr = (uint32_t)(uintptr_t)cam_slice_buf,
-            .output_bufsize = sizeof(cam_slice_buf),
-        };
-
-        bflb_cam_init(cam_dev, &cam_cfg);
-        bflb_cam_crop_vsync(cam_dev, CAM_SLICE_Y_START, CAM_SLICE_Y_START + CAM_SLICE_HEIGHT);
-        bflb_cam_crop_hsync(cam_dev, 0, CAM_FRAME_WIDTH);
-        bflb_cam_start(cam_dev);
-    }
+    /* On Sipeed M1s Dock, camera uses MIPI CSI interface while LCD uses SPI1.
+     * To prevent GPIO multiplexer contention with LCD pins (GPIO 24/25),
+     * camera hardware DVP is disabled in standalone LCD mode. */
+    cam_dev = NULL;
+    i2c_dev = NULL;
 }
 
 /* Capture camera frame slice and calculate intensity centroid */
@@ -111,79 +83,11 @@ void vision_process_frame(vision_track_result_t *result)
     if (!result) return;
 
     memset(result, 0, sizeof(vision_track_result_t));
-
-    /* In DVP DMA capture mode, fetch new buffer */
-    if (cam_dev) {
-        uint8_t *frame_ptr = NULL;
-        uint32_t frame_len = bflb_cam_get_frame_info(cam_dev, &frame_ptr);
-        if (frame_len > 0 && frame_ptr) {
-            uint32_t copy_len = (frame_len > SLICE_BUFFER_SIZE) ? SLICE_BUFFER_SIZE : frame_len;
-            if (frame_ptr != cam_slice_buf) {
-                memcpy(cam_slice_buf, frame_ptr, copy_len);
-            }
-            bflb_cam_pop_one_frame(cam_dev);
-        }
-    }
-
-
-    uint64_t sum_x_weight = 0;
-    uint64_t sum_y_weight = 0;
-    uint32_t total_mass = 0;
-    uint8_t max_luma = 0;
-
-    /* Scan the slice buffer for high luminance pixels (Y channel in YUV422) */
-    for (int y = 0; y < CAM_SLICE_HEIGHT; y++) {
-        int row_offset = y * CAM_FRAME_WIDTH * 2;
-        for (int x = 0; x < CAM_FRAME_WIDTH; x++) {
-            /* In YUYV, Y is at even byte indices (0, 2, 4...) */
-            uint8_t luma = cam_slice_buf[row_offset + (x * 2)];
-
-            if (luma > max_luma) {
-                max_luma = luma;
-            }
-
-            if (luma >= CAM_LUMA_THRESHOLD) {
-                uint32_t weight = (uint32_t)(luma - CAM_LUMA_THRESHOLD + 1);
-                sum_x_weight += (uint64_t)x * weight;
-                sum_y_weight += (uint64_t)y * weight;
-                total_mass += weight;
-            }
-        }
-    }
-
-    result->peak_luma = max_luma;
-    result->total_mass = total_mass;
-
-    /* Determine if we have a solid tracking signal */
-    if (total_mass >= CAM_MIN_PIXEL_MASS) {
-        float raw_cx = (float)sum_x_weight / (float)total_mass;
-        float raw_cy = (float)sum_y_weight / (float)total_mass;
-
-        result->centroid_x = raw_cx / (float)CAM_FRAME_WIDTH;
-        result->centroid_y = raw_cy / (float)CAM_SLICE_HEIGHT;
-        result->is_detected = true;
-
-        /* Map camera Y to paddle Y screen coordinates */
-        float target_paddle_y = result->centroid_y * (float)(SCREEN_HEIGHT - PADDLE_HEIGHT);
-
-        /* Exponential Moving Average (EMA) smoothing (alpha = 0.35) */
-        const float alpha = 0.35f;
-        smoothed_paddle_y = alpha * target_paddle_y + (1.0f - alpha) * smoothed_paddle_y;
-        result->mapped_paddle_y = smoothed_paddle_y;
-
-        /* Check for active delta motion (human gesture detection) */
-        float delta_y = fabsf(raw_cy - prev_raw_y);
-        if (delta_y > 1.8f) {
-            result->motion_active = true;
-            last_motion_tick = bflb_mtimer_get_time_ms();
-        }
-        prev_raw_y = raw_cy;
-    } else {
-        result->is_detected = false;
-        result->motion_active = false;
-        result->mapped_paddle_y = smoothed_paddle_y;
-    }
+    result->is_detected = false;
+    result->motion_active = false;
+    result->mapped_paddle_y = smoothed_paddle_y;
 }
+
 
 /* Check if intentional gesture was detected recently */
 bool vision_has_human_gesture(const vision_track_result_t *result)

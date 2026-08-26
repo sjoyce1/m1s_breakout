@@ -75,12 +75,19 @@ int main(void)
         /* Step E: Optimized Dirty-Rectangle LCD Render */
         breakout_game_render(&g_game);
 
-        /* Step F: 60 FPS Frame Rate Throttling / Precision Sync */
+        /* Step F: Serial Telemetry Log (1 Hz) */
+        if (g_game.frame_count % 60 == 0) {
+            printf("[GAME] Frame %ld | Score: %d | Attract: %d\r\n", 
+                   (long)g_game.frame_count, g_game.score, g_game.is_attract_mode);
+        }
+
+        /* Step G: 60 FPS Frame Rate Throttling / Precision Sync */
         frame_elapsed_us = bflb_mtimer_get_time_us() - frame_start_us;
         if (frame_elapsed_us < FRAME_TIME_US) {
             bflb_mtimer_delay_us(FRAME_TIME_US - frame_elapsed_us);
         }
     }
+
 
     return 0;
 }

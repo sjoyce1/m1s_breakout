@@ -99,7 +99,7 @@ static inline void lcd_write_cmd(uint8_t cmd)
 {
     bflb_gpio_reset(gpio_dev, LCD_SPI_DC_PIN);
     bflb_gpio_reset(gpio_dev, LCD_SPI_CS_PIN);
-    bflb_spi_poll_send(spi_dev, cmd);
+    bflb_spi_poll_exchange(spi_dev, &cmd, NULL, 1);
     bflb_gpio_set(gpio_dev, LCD_SPI_CS_PIN);
 }
 
@@ -108,9 +108,10 @@ static inline void lcd_write_data8(uint8_t data)
 {
     bflb_gpio_set(gpio_dev, LCD_SPI_DC_PIN);
     bflb_gpio_reset(gpio_dev, LCD_SPI_CS_PIN);
-    bflb_spi_poll_send(spi_dev, data);
+    bflb_spi_poll_exchange(spi_dev, &data, NULL, 1);
     bflb_gpio_set(gpio_dev, LCD_SPI_CS_PIN);
 }
+
 
 /* Set Drawing Window / Viewport */
 static void lcd_set_window(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2)
