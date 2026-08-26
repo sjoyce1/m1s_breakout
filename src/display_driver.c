@@ -141,8 +141,15 @@ static void lcd_set_window(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2)
 /* Initialize SPI controller and LCD panel */
 void lcd_spi_init(void)
 {
+    printf("[LCD] Fetching device handles...\r\n");
     gpio_dev = bflb_device_get_by_name("gpio");
     spi_dev  = bflb_device_get_by_name("spi1");
+
+    if (!spi_dev) {
+        printf("[LCD ERROR] spi1 device handle is NULL!\r\n");
+        return;
+    }
+    printf("[LCD] spi1 handle acquired (base: 0x%08lx). Setting up pins...\r\n", (unsigned long)spi_dev->reg_base);
 
     /* Initialize control GPIO pins */
     bflb_gpio_init(gpio_dev, LCD_SPI_CS_PIN, GPIO_OUTPUT | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_1);
@@ -170,6 +177,8 @@ void lcd_spi_init(void)
         .rx_fifo_threshold = 0,
     };
     bflb_spi_init(spi_dev, &spi_cfg);
+    printf("[LCD] SPI1 peripheral initialized at 40 MHz.\r\n");
+
 
     /* Hardware Reset LCD */
     bflb_gpio_reset(gpio_dev, LCD_SPI_RESET_PIN);
