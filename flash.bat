@@ -33,10 +33,15 @@ echo =======================================================
 set "FLASHER=%~dp0bouffalo_sdk\tools\bflb_tools\bouffalo_flash_cube\BLFlashCommand.exe"
 
 if exist "%FLASHER%" (
-    "%FLASHER%" --interface=uart --baudrate=%BAUD% --port=%PORT% --chipname=bl808 --cpu_id=%CPU_ID% --firmware="%FIRMWARE%"
+    if exist "flash_prog_cfg.ini" (
+        "%FLASHER%" --interface=uart --baudrate=%BAUD% --port=%PORT% --chipname=bl808 --cpu_id=%CPU_ID% --config=flash_prog_cfg.ini
+    ) else (
+        "%FLASHER%" --interface=uart --baudrate=%BAUD% --port=%PORT% --chipname=bl808 --cpu_id=%CPU_ID% --firmware="%FIRMWARE%"
+    )
 ) else (
     bflb-mcu-tool --chip=bl808 --port=%PORT% --baudrate=%BAUD% --firmware="%FIRMWARE%"
 )
+
 
 
 if %ERRORLEVEL% EQU 0 (
