@@ -7,6 +7,8 @@
 #include "bflb_spi.h"
 #include "bflb_dma.h"
 #include "bflb_mtimer.h"
+#include "bl808_glb.h"
+
 
 /* LCD Controller Registers (ST7789V / NV3041A) */
 #define ST7789_NOP        0x00
@@ -171,6 +173,9 @@ void lcd_spi_init(void)
     bflb_gpio_set(gpio_dev, LCD_SPI_DC_PIN);
     bflb_gpio_set(gpio_dev, LCD_SPI_BACKLIGHT_PIN);
 
+    /* Enable SPI1 Hardware Clock in GLB */
+    GLB_Set_DSP_SPI_CLK(ENABLE, GLB_DSP_SPI_CLK_DSP_MUXPLL_160M, 0);
+
     /* Initialize SPI1 Peripheral at 40MHz for fast FPS */
     struct bflb_spi_config_s spi_cfg = {
         .freq = 40 * 1000 * 1000,
@@ -184,6 +189,7 @@ void lcd_spi_init(void)
     };
     bflb_spi_init(spi_dev, &spi_cfg);
     printf("[LCD] SPI1 peripheral initialized at 40 MHz.\r\n");
+
 
     /* Hardware Reset LCD */
     bflb_gpio_reset(gpio_dev, LCD_SPI_RESET_PIN);
