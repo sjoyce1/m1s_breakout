@@ -98,44 +98,51 @@ static const uint8_t font5x7[][5] = {
 static inline void lcd_write_cmd(uint8_t cmd)
 {
     bflb_gpio_reset(gpio_dev, LCD_SPI_DC_PIN);
-    bflb_gpio_reset(gpio_dev, LCD_SPI_CS_PIN);
     bflb_spi_poll_exchange(spi_dev, &cmd, NULL, 1);
-    bflb_gpio_set(gpio_dev, LCD_SPI_CS_PIN);
+}
+
+/* Internal Helper: Send multiple bytes to LCD */
+static inline void lcd_write_bytes(const uint8_t *data, size_t len)
+{
+    bflb_gpio_set(gpio_dev, LCD_SPI_DC_PIN);
+    bflb_spi_poll_exchange(spi_dev, (void *)data, NULL, len);
 }
 
 /* Internal Helper: Send 8-bit Data to LCD */
 static inline void lcd_write_data8(uint8_t data)
 {
     bflb_gpio_set(gpio_dev, LCD_SPI_DC_PIN);
-    bflb_gpio_reset(gpio_dev, LCD_SPI_CS_PIN);
     bflb_spi_poll_exchange(spi_dev, &data, NULL, 1);
-    bflb_gpio_set(gpio_dev, LCD_SPI_CS_PIN);
 }
-
 
 /* Set Drawing Window / Viewport */
 static void lcd_set_window(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2)
 {
-    /* Apply physical hardware panel Y offset (+20) for 280x240 LCD */
-    y1 += 20;
-    y2 += 20;
+    /* Physical hardware panel X offset (+20) for 280x240 landscape mode */
+    x1 += 20;
+    x2 += 20;
 
-    /* Column Address Set */
+    uint8_t data[4];
+
+    /* Column Address Set (0x2A) */
+    data[0] = (uint8_t)(x1 >> 8);
+    data[1] = (uint8_t)(x1 & 0xFF);
+    data[2] = (uint8_t)(x2 >> 8);
+    data[3] = (uint8_t)(x2 & 0xFF);
     lcd_write_cmd(ST7789_CASET);
-    lcd_write_data8((x1 >> 8) & 0xFF);
-    lcd_write_data8(x1 & 0xFF);
-    lcd_write_data8((x2 >> 8) & 0xFF);
-    lcd_write_data8(x2 & 0xFF);
+    lcd_write_bytes(data, 4);
 
-    /* Row Address Set */
+    /* Row Address Set (0x2B) */
+    data[0] = (uint8_t)(y1 >> 8);
+    data[1] = (uint8_t)(y1 & 0xFF);
+    data[2] = (uint8_t)(y2 >> 8);
+    data[3] = (uint8_t)(y2 & 0xFF);
     lcd_write_cmd(ST7789_RASET);
-    lcd_write_data8((y1 >> 8) & 0xFF);
-    lcd_write_data8(y1 & 0xFF);
-    lcd_write_data8((y2 >> 8) & 0xFF);
-    lcd_write_data8(y2 & 0xFF);
+    lcd_write_bytes(data, 4);
 
-    /* Write to RAM */
+    /* Write to RAM (0x2C) */
     lcd_write_cmd(ST7789_RAMWR);
+    bflb_gpio_set(gpio_dev, LCD_SPI_DC_PIN);
 }
 
 /* Initialize SPI controller and LCD panel */
@@ -152,16 +159,15 @@ void lcd_spi_init(void)
     printf("[LCD] spi1 handle acquired (base: 0x%08lx). Setting up pins...\r\n", (unsigned long)spi_dev->reg_base);
 
     /* Initialize control GPIO pins */
-    bflb_gpio_init(gpio_dev, LCD_SPI_CS_PIN, GPIO_OUTPUT | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_1);
     bflb_gpio_init(gpio_dev, LCD_SPI_DC_PIN, GPIO_OUTPUT | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_1);
     bflb_gpio_init(gpio_dev, LCD_SPI_RESET_PIN, GPIO_OUTPUT | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_1);
     bflb_gpio_init(gpio_dev, LCD_SPI_BACKLIGHT_PIN, GPIO_OUTPUT | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_1);
 
-    /* Configure SPI1 MOSI and SCLK Alternate Function Pinmux */
+    /* Configure SPI1 CS, MOSI, and SCLK Alternate Function Pinmux */
+    bflb_gpio_init(gpio_dev, LCD_SPI_CS_PIN, GPIO_FUNC_SPI1 | GPIO_ALTERNATE | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_2);
     bflb_gpio_init(gpio_dev, LCD_SPI_MOSI_PIN, GPIO_FUNC_SPI1 | GPIO_ALTERNATE | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_2);
     bflb_gpio_init(gpio_dev, LCD_SPI_SCLK_PIN, GPIO_FUNC_SPI1 | GPIO_ALTERNATE | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_2);
 
-    bflb_gpio_set(gpio_dev, LCD_SPI_CS_PIN);
     bflb_gpio_set(gpio_dev, LCD_SPI_DC_PIN);
     bflb_gpio_set(gpio_dev, LCD_SPI_BACKLIGHT_PIN);
 
@@ -179,41 +185,44 @@ void lcd_spi_init(void)
     bflb_spi_init(spi_dev, &spi_cfg);
     printf("[LCD] SPI1 peripheral initialized at 40 MHz.\r\n");
 
-
     /* Hardware Reset LCD */
     bflb_gpio_reset(gpio_dev, LCD_SPI_RESET_PIN);
-    bflb_mtimer_delay_ms(50);
+    bflb_mtimer_delay_ms(20);
     bflb_gpio_set(gpio_dev, LCD_SPI_RESET_PIN);
-    bflb_mtimer_delay_ms(120);
+    bflb_mtimer_delay_ms(20);
 
-    /* Software Reset */
+    /* Official ST7789V SPI Init Sequence */
     lcd_write_cmd(ST7789_SWRESET);
-    bflb_mtimer_delay_ms(150);
+    bflb_mtimer_delay_ms(20);
 
-    /* Exit Sleep */
     lcd_write_cmd(ST7789_SLPOUT);
-    bflb_mtimer_delay_ms(120);
+    bflb_mtimer_delay_ms(20);
 
     /* Set Color Mode to 16-bit 65K Colors (RGB565) */
     lcd_write_cmd(ST7789_COLMOD);
     lcd_write_data8(0x55);
-
-    /* Memory Access Control: 280x240 orientation (Landscape) */
-    lcd_write_cmd(ST7789_MADCTL);
-    lcd_write_data8(0x60); /* MY=0, MX=1, MV=1, ML=0, BGR=0 */
+    bflb_mtimer_delay_ms(10);
 
     /* Inversion ON for IPS panel */
     lcd_write_cmd(ST7789_INVON);
-    bflb_mtimer_delay_ms(10);
+    bflb_mtimer_delay_ms(20);
 
     /* Display ON */
     lcd_write_cmd(ST7789_DISPON);
     bflb_mtimer_delay_ms(20);
 
+    /* Memory Access Control: 280x240 orientation (Landscape) */
+    lcd_write_cmd(ST7789_MADCTL);
+    lcd_write_data8(0x60);
+    bflb_mtimer_delay_ms(10);
+
+    /* Frame Rate Control */
+    lcd_write_cmd(0xC6);
+    lcd_write_data8(0x00);
+
     /* Clear initial display */
     lcd_clear(COLOR_BLACK);
 }
-
 
 /* Clear full screen with color */
 void lcd_clear(uint16_t color)
@@ -225,13 +234,10 @@ void lcd_clear(uint16_t color)
     }
 
     bflb_gpio_set(gpio_dev, LCD_SPI_DC_PIN);
-    bflb_gpio_reset(gpio_dev, LCD_SPI_CS_PIN);
 
     for (int y = 0; y < SCREEN_HEIGHT; y++) {
         bflb_spi_poll_exchange(spi_dev, line_buffer, NULL, SCREEN_WIDTH * 2);
     }
-
-    bflb_gpio_set(gpio_dev, LCD_SPI_CS_PIN);
 }
 
 /* Fast block rectangle fill */
@@ -255,14 +261,12 @@ void lcd_draw_rect_fill(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t col
     }
 
     bflb_gpio_set(gpio_dev, LCD_SPI_DC_PIN);
-    bflb_gpio_reset(gpio_dev, LCD_SPI_CS_PIN);
 
     for (int row = y1; row <= y2; row++) {
         bflb_spi_poll_exchange(spi_dev, line_buffer, NULL, draw_w * 2);
     }
-
-    bflb_gpio_set(gpio_dev, LCD_SPI_CS_PIN);
 }
+
 
 /* Draw rectangle outline */
 void lcd_draw_rect_outline(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color)
@@ -297,10 +301,9 @@ void lcd_flush_rect(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t *
     lcd_set_window(x, y, x2, y2);
 
     bflb_gpio_set(gpio_dev, LCD_SPI_DC_PIN);
-    bflb_gpio_reset(gpio_dev, LCD_SPI_CS_PIN);
     bflb_spi_poll_exchange(spi_dev, (void *)pixels, NULL, w * h * 2);
-    bflb_gpio_set(gpio_dev, LCD_SPI_CS_PIN);
 }
+
 
 /* Render single 5x7 character */
 void lcd_draw_char(int16_t x, int16_t y, char c, uint16_t color, uint16_t bg_color)
