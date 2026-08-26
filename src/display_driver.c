@@ -167,34 +167,21 @@ void lcd_spi_init(void)
     /* Initialize control GPIO pins */
     bflb_gpio_init(gpio_dev, LCD_SPI_DC_PIN, GPIO_OUTPUT | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_1);
     bflb_gpio_init(gpio_dev, LCD_SPI_RESET_PIN, GPIO_OUTPUT | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_1);
+    bflb_gpio_init(gpio_dev, LCD_SPI_BACKLIGHT_PIN, GPIO_OUTPUT | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_2);
 
-    /* Configure Backlight PWM on GPIO 11 (2 kHz, 50% duty) */
-    bflb_gpio_init(gpio_dev, LCD_SPI_BACKLIGHT_PIN, GPIO_FUNC_PWM0 | GPIO_ALTERNATE | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_2);
-    struct bflb_device_s *pwm_dev = bflb_device_get_by_name("pwm_v2_0");
-    if (pwm_dev) {
-        struct bflb_pwm_v2_config_s pwm_cfg = {
-            .clk_source = BFLB_SYSTEM_XCLK,
-            .clk_div = 40,
-            .period = 500, /* 40MHz / 40 / 500 = 2 kHz */
-        };
-        bflb_pwm_v2_init(pwm_dev, &pwm_cfg);
-        bflb_pwm_v2_channel_set_threshold(pwm_dev, PWM_CH1, 0, 250); /* 50% duty cycle */
-        bflb_pwm_v2_channel_positive_start(pwm_dev, PWM_CH1);
-        bflb_pwm_v2_start(pwm_dev);
-        printf("[LCD] Hardware Backlight PWM initialized on GPIO 11.\r\n");
-    }
-
+    /* Turn Backlight ON */
+    bflb_gpio_set(gpio_dev, LCD_SPI_BACKLIGHT_PIN);
+    bflb_gpio_set(gpio_dev, LCD_SPI_DC_PIN);
 
     /* Configure SPI1 CS, MOSI, and SCLK Alternate Function Pinmux */
     bflb_gpio_init(gpio_dev, LCD_SPI_CS_PIN, GPIO_FUNC_SPI1 | GPIO_ALTERNATE | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_2);
     bflb_gpio_init(gpio_dev, LCD_SPI_MOSI_PIN, GPIO_FUNC_SPI1 | GPIO_ALTERNATE | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_2);
     bflb_gpio_init(gpio_dev, LCD_SPI_SCLK_PIN, GPIO_FUNC_SPI1 | GPIO_ALTERNATE | GPIO_PULLUP | GPIO_SMT_EN | GPIO_DRV_2);
 
-    bflb_gpio_set(gpio_dev, LCD_SPI_DC_PIN);
-    bflb_gpio_set(gpio_dev, LCD_SPI_BACKLIGHT_PIN);
-
-    /* Enable SPI1 Hardware Clock in GLB */
+    /* Enable SPI1 Hardware Clock and Pad Routing in GLB */
     GLB_Set_DSP_SPI_CLK(ENABLE, GLB_DSP_SPI_CLK_DSP_MUXPLL_160M, 0);
+    GLB_Set_DSP_SPI_0_ACT_MOD_Sel(GLB_SPI_PAD_ACT_AS_MASTER);
+
 
     /* Initialize SPI1 Peripheral at 40MHz for fast FPS */
     struct bflb_spi_config_s spi_cfg = {
