@@ -33,8 +33,8 @@ extern "C" {
 /* ============================================================================
  * GPIO & Hardware Pin Definitions (Sipeed M1s Dock / BL808)
  * ============================================================================ */
-#define GPIO_BTN_UP          22   /* Onboard Button / Navigation Up   */
-#define GPIO_BTN_DOWN        23   /* Onboard Button / Navigation Down */
+#define GPIO_BTN_UP          23   /* Onboard Button / Navigation Up   */
+#define GPIO_BTN_DOWN        22   /* Onboard Button / Navigation Down */
 
 /* LCD SPI Pins (Sipeed M1s Dock Hardware SPI1) */
 #define LCD_SPI_MOSI_PIN     25   /* GLB_GPIO_PIN_25 (SPI1 MOSI) */
@@ -56,10 +56,10 @@ extern "C" {
 /* ============================================================================
  * Game Physics & Layout Parameters
  * ============================================================================ */
-/* Paddle Parameters (Vertical on the Right) */
+/* Paddle Parameters (Vertical on the Left) */
 #define PADDLE_WIDTH         6
 #define PADDLE_HEIGHT        46
-#define PADDLE_X_POS         (SCREEN_WIDTH - 14)
+#define PADDLE_X_POS         12
 #define PADDLE_MOVE_SPEED    5.0f
 
 /* Ball Parameters */
@@ -68,15 +68,16 @@ extern "C" {
 #define BALL_MAX_SPEED_Y     4.0f
 #define BALL_SPEED_INCREMENT 0.08f
 
-/* Brick Layout (Vertical Columns on the Left) */
-#define BRICK_COLS           5    /* Columns across X (Left side) */
+/* Brick Layout (Vertical Columns on the Right) */
+#define BRICK_COLS           5    /* Columns across X (Right side) */
 #define BRICK_ROWS           10   /* Rows along Y (Vertical) */
 #define BRICK_WIDTH          9
 #define BRICK_HEIGHT         19
 #define BRICK_GAP_X          3
 #define BRICK_GAP_Y          3
-#define BRICK_START_X        14
+#define BRICK_START_X        210  /* Right side brick matrix */
 #define BRICK_START_Y        12
+
 
 /* Timing & Idle Attract Mode Parameters */
 #define TARGET_FPS           60

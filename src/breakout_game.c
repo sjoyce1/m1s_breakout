@@ -4,17 +4,18 @@
 #include <math.h>
 #include <stdio.h>
 
-/* Column colors & point mappings (from left to right) */
+/* Column colors & point mappings (from left to right: Col 0 innermost to Col 4 back wall) */
 static const struct {
     uint16_t color;
     uint8_t points;
 } col_specs[BRICK_COLS] = {
-    {COLOR_RED,    50},
-    {COLOR_ORANGE, 40},
-    {COLOR_YELLOW, 30},
+    {COLOR_CYAN,   10},
     {COLOR_GREEN,  20},
-    {COLOR_CYAN,   10}
+    {COLOR_YELLOW, 30},
+    {COLOR_ORANGE, 40},
+    {COLOR_RED,    50}
 };
+
 
 /* Random float generator [-1.0, 1.0] */
 static inline float rand_unit_float(void)
@@ -84,11 +85,11 @@ void breakout_game_reset_round(breakout_game_t *game)
 /* Respawn ball */
 void breakout_game_spawn_ball(breakout_game_t *game)
 {
-    game->ball.x = game->paddle.x - BALL_RADIUS - 2;
+    game->ball.x = game->paddle.x + game->paddle.w + BALL_RADIUS + 2;
     game->ball.y = game->paddle.y + (game->paddle.h / 2.0f);
     
-    /* Launch ball leftwards towards bricks with initial angle */
-    game->ball.vx = -BALL_BASE_SPEED_X;
+    /* Launch ball rightwards towards bricks with initial angle */
+    game->ball.vx = BALL_BASE_SPEED_X;
     game->ball.vy = rand_unit_float() * 1.5f;
     game->ball.in_play = true;
 }
@@ -168,30 +169,30 @@ void breakout_game_tick(breakout_game_t *game, const input_state_t *input)
             game->ball.y = (float)(SCREEN_HEIGHT - 1 - game->ball.radius);
             game->ball.vy = -game->ball.vy;
         }
-        /* Left Wall (behind bricks) */
-        if (game->ball.x - game->ball.radius <= 0) {
-            game->ball.x = (float)game->ball.radius;
-            game->ball.vx = fabsf(game->ball.vx); /* Rebound right */
+        /* Right Wall (behind bricks) */
+        if (game->ball.x + game->ball.radius >= SCREEN_WIDTH - 1) {
+            game->ball.x = (float)(SCREEN_WIDTH - 1 - game->ball.radius);
+            game->ball.vx = -fabsf(game->ball.vx); /* Rebound left */
         }
 
-        /* Paddle Collision (Paddle on the right side) */
+        /* Paddle Collision (Paddle on the left side) */
         float paddle_left = (float)game->paddle.x;
         float paddle_right = paddle_left + game->paddle.w;
         float paddle_top = game->paddle.y;
         float paddle_bottom = paddle_top + game->paddle.h;
 
-        if ((game->ball.x + game->ball.radius >= paddle_left) &&
-            (game->ball.x - game->ball.radius <= paddle_right) &&
+        if ((game->ball.x - game->ball.radius <= paddle_right) &&
+            (game->ball.x + game->ball.radius >= paddle_left) &&
             (game->ball.y >= paddle_top - 2) &&
             (game->ball.y <= paddle_bottom + 2) &&
-            (game->ball.vx > 0)) /* Moving towards paddle */
+            (game->ball.vx < 0)) /* Moving towards paddle on left */
         {
-            /* Bounce back to the left */
-            game->ball.x = paddle_left - game->ball.radius - 0.5f;
+            /* Bounce back to the right */
+            game->ball.x = paddle_right + game->ball.radius + 0.5f;
             
             /* Increase speed incrementally */
             float speed = fabsf(game->ball.vx) + BALL_SPEED_INCREMENT;
-            game->ball.vx = -speed;
+            game->ball.vx = speed;
 
             /* Calculate spin / vertical angle based on hit location */
             float paddle_center_y = paddle_top + (game->paddle.h / 2.0f);
@@ -202,8 +203,8 @@ void breakout_game_tick(breakout_game_t *game, const input_state_t *input)
             game->ball.vy = relative_hit * BALL_MAX_SPEED_Y;
         }
 
-        /* Ball Lost: Passed player's paddle to the right */
-        if (game->ball.x - game->ball.radius > SCREEN_WIDTH) {
+        /* Ball Lost: Passed player's paddle to the left */
+        if (game->ball.x + game->ball.radius < 0) {
             if (game->is_attract_mode) {
                 /* In attract mode, automatically keep rolling */
                 breakout_game_spawn_ball(game);
@@ -220,6 +221,7 @@ void breakout_game_tick(breakout_game_t *game, const input_state_t *input)
                 }
             }
         }
+
 
         /* -------------------------------------------------------------
          * 3. Brick Collision Detection
@@ -336,14 +338,14 @@ void breakout_game_render(breakout_game_t *game)
      * 3. HUD Redraw (Score, Lives, Attract Mode indicator)
      * ------------------------------------------------------------- */
     if (game->hud_redraw_needed || (game->frame_count % 30 == 0)) {
-        /* Score HUD on top right */
-        lcd_draw_string(SCREEN_WIDTH - 96, 4, "SCR:", COLOR_LIGHT_GRAY, COLOR_BLACK);
-        lcd_draw_num(SCREEN_WIDTH - 66, 4, game->score, COLOR_YELLOW, COLOR_BLACK);
+        /* Score HUD on top left */
+        lcd_draw_string(24, 4, "SCR:", COLOR_LIGHT_GRAY, COLOR_BLACK);
+        lcd_draw_num(54, 4, game->score, COLOR_YELLOW, COLOR_BLACK);
 
         /* Lives indicator */
         if (!game->is_attract_mode) {
-            lcd_draw_string(SCREEN_WIDTH - 96, 14, "LIV:", COLOR_LIGHT_GRAY, COLOR_BLACK);
-            lcd_draw_num(SCREEN_WIDTH - 66, 14, game->lives, COLOR_CYAN, COLOR_BLACK);
+            lcd_draw_string(24, 14, "LIV:", COLOR_LIGHT_GRAY, COLOR_BLACK);
+            lcd_draw_num(54, 14, game->lives, COLOR_CYAN, COLOR_BLACK);
         }
 
         /* Attract Mode Flashing Banner */
@@ -351,15 +353,16 @@ void breakout_game_render(breakout_game_t *game)
             bool flash = (game->frame_count / 30) % 2 == 0;
             uint16_t badge_color = flash ? COLOR_MAGENTA : COLOR_YELLOW;
             lcd_draw_string(90, 4, "* AUTO-PILOT *", badge_color, COLOR_BLACK);
-            lcd_draw_string(72, SCREEN_HEIGHT - 12, "TOUCH BTN/CAM TO PLAY", COLOR_WHITE, COLOR_BLACK);
+            lcd_draw_string(50, SCREEN_HEIGHT - 12, "TOUCH BTN/CAM TO PLAY", COLOR_WHITE, COLOR_BLACK);
         } else {
             /* Erase attract banner when in human control */
             lcd_draw_rect_fill(90, 4, 90, 8, COLOR_BLACK);
-            lcd_draw_rect_fill(72, SCREEN_HEIGHT - 12, 140, 8, COLOR_BLACK);
+            lcd_draw_rect_fill(50, SCREEN_HEIGHT - 12, 160, 8, COLOR_BLACK);
         }
 
         game->hud_redraw_needed = false;
     }
+
 
     /* Game Over Overlay */
     if (game->state == GAME_STATE_GAME_OVER) {
