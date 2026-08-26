@@ -1,0 +1,27 @@
+{
+    "configurations": [
+        {
+            "name": "BL808-RISCV",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/include",
+                "${env:BL_SDK_BASE}/components/**",
+                "${env:BL_SDK_BASE}/drivers/lhal/include",
+                "${env:BL_SDK_BASE}/drivers/soc/bl808/**",
+                "${env:BL_SDK_BASE}/bsp/board/bl808_m1s_dock"
+            ],
+            "defines": [
+                "BL808=1",
+                "CHIP_BL808=1",
+                "CPU_D0=1",
+                "SCREEN_WIDTH=280",
+                "SCREEN_HEIGHT=240"
+            ],
+            "compilerPath": "riscv64-unknown-elf-gcc",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "gcc-arm64"
+        }
+    ],
+    "version": 4
+}

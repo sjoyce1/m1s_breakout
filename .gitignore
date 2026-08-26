@@ -1,0 +1,26 @@
+# Build Outputs
+build/
+build_out/
+*.bin
+*.elf
+*.map
+*.hex
+*.asm
+*.d
+*.o
+
+# IDE & Editor Configs
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/c_cpp_properties.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Temporary / Log files
+*.log
+scratch/
