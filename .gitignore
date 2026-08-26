@@ -30,5 +30,7 @@ config.ini
 bouffalo_sdk/
 M1s_BL808_SDK/
 M1s_BL808_example/
+bl808/
 toolchain_gcc_t-head_windows/
+
 
